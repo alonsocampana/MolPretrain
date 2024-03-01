@@ -118,7 +118,8 @@ class MolGAN(nn.Module):
         self.mds = nn.Sequential(nn.Linear(embed_dim, 3))
         self.atom3d_embedder = model3D
         self.atom3d_embedder_mlp = nn.Sequential(nn.BatchNorm1d(embed_dim), nn.Linear(embed_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, 1))
-        self.pooling = gnn.aggr.MeanAggregation()
+        self.pooling2d = gnn.aggr.MeanAggregation()
+        self.pooling3d = gnn.aggr.MeanAggregation()
         
     def forward(self, data1, data2, 
                 n_samples = 4, 
@@ -139,7 +140,7 @@ class MolGAN(nn.Module):
                 "reconstructed_geometry": None}
         node_embeddings = self.atom_embedder(data1)
         if return_embeddings:
-            out["embeddings_2d"] = self.pooling(node_embeddings, data1["batch"])
+            out["embeddings_2d"] = self.pooling2d(node_embeddings, data1["batch"])
         #### TODO: REFACTOR FOR BETTER PARAL
         if generate_fake:
             samples = self.sampler(node_embeddings, n_samples)
@@ -162,28 +163,28 @@ class MolGAN(nn.Module):
             out["logits_fake_graphs"] = self.atom3d_embedder_mlp(self.atom3d_embedder(torch_geometric.data.Batch.from_data_list(fake_graphs)))
         if generate_fake or return_embeddings or return_mds or predict_features3d:
             embed3d = self.atom3d_embedder(data2)
-            gs3d_embed = self.pooling(embed3d, data2["batch"])
+            gs3d_embed = self.pooling3d(embed3d, data2["batch"])
             out["logits_real_graphs"] = self.atom3d_embedder_mlp(gs3d_embed)
             out["embeddings_3d"] = gs3d_embed
             out["predicted_properties3d"] = self.molecular_decoder(gs3d_embed)
             out["reconstructed_geometry"] = self.distance_decoder(self.mds(embed3d), data2["batch"])
         if predict_features:
-            out["predicted_properties"] = self.molecular_decoder(self.pooling(node_embeddings, data1["batch"]))
+            out["predicted_properties"] = self.molecular_decoder(self.pooling2d(node_embeddings, data1["batch"]))
         if predict_3d:
             out["predicted_distances"] = self.distance_decoder(node_embeddings, data1["batch"])
             #### TODO: REFACTOR FOR BETTER PARAL
         return out
     def discriminator_parameters(self):
-        return list(self.atom3d_embedder.parameters()) + list(self.atom3d_embedder_mlp.parameters())
+        return list(self.atom3d_embedder.parameters()) + list(self.atom3d_embedder_mlp.parameters()) + list(self.pooling3d.parameters())
     def generator_parameters(self):
-        return list(self.atom_embedder.parameters()) + list(self.sampler.parameters()) + list(self.diffusor.parameters()) + list(self.distance_decoder.parameters())
+        return list(self.atom_embedder.parameters()) + list(self.sampler.parameters()) + list(self.diffusor.parameters()) + list(self.distance_decoder.parameters()) + list(self.pooling2d.parameters())
     def im_parameters(self):
-        return list(self.atom_embedder.parameters()) + list(self.atom3d_embedder.parameters()) 
+        return list(self.atom_embedder.parameters()) + list(self.atom3d_embedder.parameters()) + list(self.pooling3d.parameters()) + list(self.pooling2d.parameters())
     def mp_parameters(self):
-        return list(self.atom_embedder.parameters()) + list(self.molecular_decoder.parameters())
+        return list(self.atom_embedder.parameters()) + list(self.molecular_decoder.parameters()) + list(self.pooling2d.parameters())
     def mp3d_parameters(self):
-        return list(self.atom3d_embedder.parameters()) + list(self.molecular_decoder.parameters())
+        return list(self.atom3d_embedder.parameters()) + list(self.molecular_decoder.parameters()) + list(self.pooling3d.parameters())
     def av3d_parameters(self):
-        return list(self.atom_embedder.parameters()) + list(self.distance_decoder.parameters()) + list(self.project3d.parameters())
+        return list(self.atom_embedder.parameters()) + list(self.distance_decoder.parameters()) + list(self.project3d.parameters()) + list(self.pooling2d.parameters())
     def mds_parameters(self):
-        return list(self.atom3d_embedder.parameters()) + list(self.distance_decoder.parameters()) + list(self.mds.parameters())
+        return list(self.atom3d_embedder.parameters()) + list(self.distance_decoder.parameters()) + list(self.mds.parameters()) + list(self.pooling3d.parameters())

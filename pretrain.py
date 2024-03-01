@@ -25,21 +25,17 @@ def pretrain_model(config, final_callback = None, epoch_callback = None):
     model_name = config["model_file"].replace('.py', '')
     target_model = __import__(model_name)
     train, test = get_data()
-    embed_dim = config["embed_dim"]
     lr = config["learning_rate"]
-    num_layers = config["num_layers"]
     pretraining = config["pretraining"]
     config_model2d = target_model.config_model2d
     config_model3d = target_model.config_model3d
-    config_model2d["embed_dim"] = embed_dim
-    config_model3d["embed_dim"] = embed_dim
-    config_model2d["random_signal_dim"] = config_model2d["random_signal_dim"] = config["random_signal_dim"]
-    config_model2d["dropout"] = config_model2d["dropout"] = config["dropout"]
+    config_model2d = {**config, **config_model2d}
+    config_model3d = {**config, **config_model3d}
     
-    model = MolGAN(model2D = target_model.Model2D(**config_model2d),
+    model = MolGAN(model2D = target_model.Model2D(train_dataset= train,**config_model2d),
                    model3D = target_model.Model3D(**config_model3d),
                    init_dim=79,
-                   embed_dim=embed_dim,
+                   embed_dim=config["embed_dim"],
                    edge_dim = 10,
                    hidden_dim = config["hidden_dim"],
                    n_diffusion_steps = 4)
@@ -55,7 +51,7 @@ def pretrain_model(config, final_callback = None, epoch_callback = None):
         batch_size = 260
         n_samples = 4
     if "properties2d" in pretraining:
-        batch_size = 640
+        batch_size = 320
         n_samples = 1
     if "dist" in pretraining:
         batch_size = 640
@@ -86,8 +82,8 @@ def pretrain_model(config, final_callback = None, epoch_callback = None):
     pretraining = config["pretraining"]
     ls_train = {}
     ls_test = {}
-    model.train()
     for epoch in range(config["num_epochs"]):
+        model.train()
         ls_train_epoch = {}
         ls_test_epoch = {}
         for x, (b1, b2) in enumerate(train_loader):

@@ -26,16 +26,28 @@ def objective(trial):
             for k in ls_test.keys():
                 lss += [ls_test[k][-1]]
             return np.mean(lss)
-        config = {"embed_dim":trial.suggest_int("embed_dim", 1, 10),
-                  "hidden_dim":trial.suggest_int("hidden_dim", 128, 1024),
-                  "num_layers":trial.suggest_int("num_layers", 1, 8),
-                  "learning_rate":trial.suggest_float("learning_rate", 0.000001, 0.01, log=True),
-                  "num_epochs":20,
+        config = {"num_epochs":20,
                   "model_file":args.model_file,
                   "pretraining":args.pretraining,
-                  "random_signal_dim":trial.suggest_int("random_signal_dim", 1, 200),
-                  "dropout":trial.suggest_float("dropout", 0.0, 0.2),
                  "device":args.device}
+        model_name = config["model_file"].replace('.py', '')
+        target_model = __import__(model_name)
+        if "embed_dim" in target_model.config_parameters:
+            config["embed_dim"] = trial.suggest_int("embed_dim", 1, 12)
+        if "hidden_dim" in target_model.config_parameters:
+            config["hidden_dim"] =trial.suggest_int("hidden_dim", 128, 2048)
+        if "num_layers" in target_model.config_parameters:
+            config["num_layers"] =trial.suggest_int("num_layers", 1, 8)
+        if "num_blocks" in target_model.config_parameters:
+            config["num_blocks"] =trial.suggest_int("num_blocks", 1, 6)
+        if "num_heads" in target_model.config_parameters:
+            config["num_heads"] =trial.suggest_int("num_heads", 1, 6)
+        if "learning_rate" in target_model.config_parameters:
+            config["learning_rate"] =trial.suggest_float("learning_rate", 0.000001, 0.01, log=True)
+        if "random_signal_dim" in target_model.config_parameters or args.pretraining == "infomax":
+            config["random_signal_dim"] =trial.suggest_int("random_signal_dim", 1, 200)
+        if "dropout" in target_model.config_parameters:
+            config["dropout"] =trial.suggest_float("dropout", 0.0, 0.4)
         config["embed_dim"]*=60
         return pretrain_model(config, epoch_callback = optuna_epoch_callback, final_callback = optuna_final_callback, )
     except Exception as e:

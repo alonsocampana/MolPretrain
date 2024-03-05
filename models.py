@@ -162,7 +162,7 @@ class MolGAN(nn.Module):
                 "reconstructed_geometry": None}
         node_embeddings = self.atom_embedder(data1)
         if return_embeddings:
-            out["embeddings_2d"] = self.pooling2d(node_embeddings, data1["batch"])
+            out["embeddings_2d"] = self.pooling2d(node_embeddings, batch=data1["batch"])
         #### TODO: REFACTOR FOR BETTER PARAL
         if generate_fake:
             samples = self.sampler(node_embeddings, n_samples)
@@ -185,13 +185,13 @@ class MolGAN(nn.Module):
             out["logits_fake_graphs"] = self.atom3d_embedder_mlp(self.atom3d_embedder(torch_geometric.data.Batch.from_data_list(fake_graphs)))
         if generate_fake or return_embeddings or return_mds or predict_features3d:
             embed3d = self.atom3d_embedder(data2)
-            gs3d_embed = self.pooling3d(embed3d, data2["batch"])
+            gs3d_embed = self.pooling3d(embed3d, batch=data2["batch"])
             out["logits_real_graphs"] = self.atom3d_embedder_mlp(gs3d_embed)
             out["embeddings_3d"] = gs3d_embed
             out["predicted_properties3d"] = self.molecular_decoder(gs3d_embed)
             out["reconstructed_geometry"] = self.distance_decoder(self.mds(embed3d), data2["batch"])
         if predict_features:
-            out["predicted_properties"] = self.molecular_decoder(self.pooling2d(node_embeddings, data1["batch"]))
+            out["predicted_properties"] = self.molecular_decoder(self.pooling2d(node_embeddings, batch=data1["batch"]))
         if predict_3d:
             out["predicted_distances"] = self.distance_decoder(node_embeddings, data1["batch"])
             #### TODO: REFACTOR FOR BETTER PARAL

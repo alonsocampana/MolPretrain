@@ -215,7 +215,7 @@ def pretrain_model(config, final_callback = None, epoch_callback = None):
             ls_train[key] += [np.mean(ls_train_epoch[key])]
         val_loss = np.mean(list(ls_test_epoch.values()))
         if epoch_callback is not None:
-            epoch_callback(val_loss, epoch,)
+            epoch_callback(val_loss, epoch, model)
         else:
             print(epoch, val_loss)
     if final_callback is None:
@@ -252,6 +252,8 @@ if __name__ == "__main__":
         config_model["embed_dim"]*=60
     config = {**config_model, **config}
     model_name = config["model_file"].replace('.py', '')
-    def save_model(model, *args):
-        torch.save(model.state_dict(), f'models/{model_name}_{config["pretraining"]}_{config["pooling"]}.pt')
-    pretrain_model(config, final_callback=save_model)
+    def save_model_print(val_loss, epoch, model, *args):
+        print(epoch, val_loss)
+        if (epoch%5) == 0:
+            torch.save(model.state_dict(), f'models/{model_name}_{config["pretraining"]}_{config["pooling"]}_{epoch}.pt')
+    pretrain_model(config, epoch_callback=save_model_print)

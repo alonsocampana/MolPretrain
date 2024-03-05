@@ -5,6 +5,7 @@ from torch_geometric import nn as gnn
 import torch_geometric
 from torch_geometric.utils import degree
 import numpy as np
+from pooling import *
 
 class RandomSignal(nn.Module):
     def __init__(self, signal_dim):
@@ -100,7 +101,9 @@ class MolGAN(nn.Module):
                  n_diffusion_steps=1,
                  n_diffusion_layers = 2,
                  n_diffusion_heads=2,
-                 random_signal_dim=32):
+                 random_signal_dim=32,
+                 pooling = "mean",
+                 pooling_kwargs = None):
         super().__init__()
         self.atom_embedder = model2D
         self.sampler = Sampler(embed_dim = embed_dim)
@@ -118,8 +121,27 @@ class MolGAN(nn.Module):
         self.mds = nn.Sequential(nn.Linear(embed_dim, 3))
         self.atom3d_embedder = model3D
         self.atom3d_embedder_mlp = nn.Sequential(nn.BatchNorm1d(embed_dim), nn.Linear(embed_dim, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, 1))
-        self.pooling2d = gnn.aggr.MeanAggregation()
-        self.pooling3d = gnn.aggr.MeanAggregation()
+        base_args = {"embed_dim":embed_dim}
+        if pooling_kwargs is None:
+            pooling_kwargs = base_args
+        else:
+            pooling_kwargs = {**pooling_kwargs, **base_args}
+        if pooling == "mean":
+            aggr = MeanAggr
+        elif pooling == "max":
+            aggr = MaxAggr
+        elif pooling == "attn":
+            aggr = AttnAggr
+        elif pooling == "deepset":
+            aggr = DeepsetAggr
+        elif pooling == "deeperset":
+            aggr = DeepersetAggr
+        elif pooling == "multihead":
+            aggr = MultiHeadAttnPooling
+        elif pooling == "transformer":
+            aggr = MultiHeadAttnFFPooling
+        self.pooling2d = aggr(**pooling_kwargs)
+        self.pooling3d = aggr(**pooling_kwargs)
         
     def forward(self, data1, data2, 
                 n_samples = 4, 

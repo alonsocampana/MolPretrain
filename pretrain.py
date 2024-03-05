@@ -13,6 +13,7 @@ import argparse
 from models import *
 from utils import *
 from functools import lru_cache
+import optuna
 
 @lru_cache(maxsize = None)
 def get_data():
@@ -226,17 +227,31 @@ def parse_arguments():
 
     parser.add_argument('--model_file', type=str, required=True, help='Path to the file containing the configurations and models.')
     parser.add_argument('--pretraining', type=str, required=True, help='pretraining strategy to follow.')
+    parser.add_argument('--pooling', type=str, required=True, help='pretraining strategy to follow.')
+    parser.add_argument('--study', type=str, default = "none", required=False, help='Study used to load hyperparameters')
     parser.add_argument('--device', type=str, required=False,default = "cpu", help='Path to the file containing the configurations and models.')
 
     return parser.parse_args()
 if __name__ == "__main__":
     args = parse_arguments()
-    config = {"embed_dim":250,
-              "hidden_dim":1024,
-              "learning_rate":0.0001,
-              "num_epochs":10,
-              "num_layers":4,
-              "model_file":args.model_file,
-              "pretraining":args.pretraining,
-             "device":args.device}
-    pretrain_model(config)
+    config = {"model_file":args.model_file,
+                  "pooling":args.pooling,
+                  "num_epochs":50,
+                  "pretraining":args.pretraining,
+                 "device":args.device}
+    if args.study == "none":
+        config_model = {"embed_dim":250,
+                  "hidden_dim":1024,
+                  "learning_rate":0.0001,
+                  "num_layers":4}
+    else:
+        study_name = args.study
+        storage_name = "sqlite:///studies/{}.db".format(study_name)
+        study = optuna.load_study(study_name, storage_name)
+        config_model = study.best_params
+        config_model["embed_dim"]*=60
+    config = {**config_model, **config}
+    model_name = config["model_file"].replace('.py', '')
+    def save_model(model, *args):
+        torch.save(model.state_dict(), f'models/{model_name}_{config["pretraining"]}_{config["pooling"]}.pt')
+    pretrain_model(config, final_callback=save_model)

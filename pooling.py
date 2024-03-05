@@ -30,8 +30,16 @@ class MeanAggr(nn.Module):
         if y is None:
             pass
         else:
-            x = x + self.lin_c(y).unsqueeze(-2)
+            x = x + torch.repeat_interleave(self.lin_c(y), torch.bincount(batch), 0)
         return self.pool(x, batch)
+    def reset_xpar(self):
+        self.lin_c.reset_parameters()
+    def freeze(self):
+        for param in self.parameters():
+            param.requires_grad = False
+    def partial_unfreeze(self):
+        for param in self.lin_c.parameters():
+            param.requires_grad = True
 
 class MaxAggr(nn.Module):
     def __init__(self,
@@ -45,8 +53,16 @@ class MaxAggr(nn.Module):
         if y is None:
             pass
         else:
-            x = x + self.lin_c(y).unsqueeze(-2)
-        return self.pool(x, batch) 
+            x = x + torch.repeat_interleave(self.lin_c(y), torch.bincount(batch), 0)
+        return self.pool(x, batch)
+    def reset_xpar(self):
+        self.lin_c.reset_parameters()
+    def freeze(self):
+        for param in self.parameters():
+            param.requires_grad = False
+    def partial_unfreeze(self):
+        for param in self.lin_c.parameters():
+            param.requires_grad = True
 
 class AttnAggr(nn.Module):
     def __init__(self,
@@ -78,8 +94,16 @@ class AttnAggr(nn.Module):
         if y is None:
             pass
         else:
-            x = x + self.lin_c(y).unsqueeze(-2)
+            x = x + torch.repeat_interleave(self.lin_c(y), torch.bincount(batch), 0)
         return self.pool(x, batch)
+    def reset_xpar(self):
+        self.lin_c.reset_parameters()
+    def freeze(self):
+        for param in self.parameters():
+            param.requires_grad = False
+    def partial_unfreeze(self):
+        for param in self.lin_c.parameters():
+            param.requires_grad = True
 
 class DeepsetAggr(nn.Module):
     def __init__(self,
@@ -111,8 +135,18 @@ class DeepsetAggr(nn.Module):
         if y is None:
             pass
         else:
-            x = (x + self.lin_c(y).unsqueeze(-2))
+            x = x + torch.repeat_interleave(self.lin_c(y), torch.bincount(batch), 0)
         return self.pool(x, batch)
+    def reset_xpar(self):
+        self.lin_c.reset_parameters()
+    def freeze(self):
+        for param in self.parameters():
+            param.requires_grad = False
+    def partial_unfreeze(self):
+        for param in self.lin_c.parameters():
+            param.requires_grad = True
+        for param in self.pool.global_nn.parameters():
+            param.requires_grad = True
 
 class DeepersetAggr(nn.Module):
     def __init__(self,
@@ -166,7 +200,16 @@ class DeepersetAggr(nn.Module):
                 x_ = torch.cat([x, x_global.repeat_interleave(torch.bincount(batch), 0)], -1)
                 x_global = self.pools[i](x_, batch)
         return x_global
-    
+    def reset_xpar(self):
+        self.lin_c.reset_parameters()
+    def freeze(self):
+        for param in self.parameters():
+            param.requires_grad = False
+    def partial_unfreeze(self):
+        for param in self.lin_c.parameters():
+            param.requires_grad = True
+        for param in self.pools[len(self.pools) -1].parameters():
+            param.requires_grad = True
 
 class MultiHeadAttnPooling(nn.Module):
     def __init__(self,
@@ -189,18 +232,28 @@ class MultiHeadAttnPooling(nn.Module):
         drugs, nodes_mask = torch_geometric.utils.to_dense_batch(x  =x, batch=batch)
         B, L, _ = drugs.shape
         if y is None:
-            cell_lines = x
+            Q = drugs # If we are applying self-attention
             S = L
         else:
-            cell_lines = y
+            Q = y # we are applying cross-attention
             S = 1
-        q = self.q(cell_lines).view(-1, S, self.n_heads, self.embed_dim).transpose(2, 1)
+        q = self.q(Q).view(-1, S, self.n_heads, self.embed_dim).transpose(2, 1)
         nodes_mask = nodes_mask.unsqueeze(1).repeat(1, self.n_heads, 1)
         k = self.k(drugs).view(-1, L, self.n_heads, self.embed_dim).transpose(2, 1)
         v = self.v(drugs).view(-1, L, self.n_heads, self.embed_dim).transpose(2, 1)
         x = F.scaled_dot_product_attention(q, k, v, nodes_mask.unsqueeze(-2), dropout_p = self.dropout_attn)
         x = x.transpose(1, 2).reshape(-1, S, self.n_heads*self.embed_dim).mean(1)
         return self.lin(x)
+    def reset_xpar(self):
+        self.q.reset_parameters()
+    def freeze(self):
+        for param in self.parameters():
+            param.requires_grad = False
+    def partial_unfreeze(self):
+        for param in self.q.parameters():
+            param.requires_grad = True
+        for param in self.lin.parameters():
+            param.requires_grad = True
     
 class MultiHeadAttnFFPooling(nn.Module):
     def __init__(self, embed_dim,
@@ -233,14 +286,28 @@ class MultiHeadAttnFFPooling(nn.Module):
         drugs, nodes_mask = torch_geometric.utils.to_dense_batch(x  =x, batch=batch)
         B, L, _ = drugs.shape
         if y is None:
-            cell_lines = x
+            Q = drugs # If we are applying self-attention
             S = L
         else:
-            cell_lines = y
+            Q = y # we are applying cross-attention
             S = 1
-        q = self.q(cell_lines).view(-1, S, self.n_heads, self.embed_dim).transpose(2, 1)
+        q = self.q(Q).view(-1, S, self.n_heads, self.embed_dim).transpose(2, 1)
         nodes_mask = nodes_mask.unsqueeze(1).repeat(1, self.n_heads, 1)
         k = self.k(drugs).view(-1, L, self.n_heads, self.embed_dim).transpose(2, 1)
         v = self.v(drugs).view(-1, L, self.n_heads, self.embed_dim).transpose(2, 1)
         x = F.scaled_dot_product_attention(q, k, v, nodes_mask.unsqueeze(-2), dropout_p = self.dropout_attn).transpose(1, 2).reshape(-1, S, self.n_heads*self.embed_dim)
         return self.ff(self.norm(self.lin(x).mean(1)))
+    def reset_xpar(self):
+        self.q.reset_parameters()
+    def freeze(self):
+        for param in self.parameters():
+            param.requires_grad = False
+    def partial_unfreeze(self):
+        for param in self.q.parameters():
+            param.requires_grad = True
+        for param in self.ff.parameters():
+            param.requires_grad = True
+        for param in self.lin.parameters():
+            param.requires_grad = True
+        
+        

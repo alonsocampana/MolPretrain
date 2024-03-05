@@ -210,3 +210,65 @@ class MolGAN(nn.Module):
         return list(self.atom_embedder.parameters()) + list(self.distance_decoder.parameters()) + list(self.project3d.parameters()) + list(self.pooling2d.parameters())
     def mds_parameters(self):
         return list(self.atom3d_embedder.parameters()) + list(self.distance_decoder.parameters()) + list(self.mds.parameters()) + list(self.pooling3d.parameters())
+    
+
+class Finetuner(nn.Module):
+    def __init__(self,
+                 model2D,
+                 init_dim = 0,
+                 embed_dim = 400,
+                 hidden_dim = 1024,
+                 num_layers_encoder = 8,
+                 num_layers_discriminator = 1,
+                 edge_dim = 10,
+                 random_signal_dim=32,
+                 dropout = 0.1,
+                 pooling = "mean",
+                 pooling_kwargs = None):
+        super().__init__()
+        self.atom_embedder = model2D
+        self.molecular_decoder = nn.Sequential(nn.Linear(embed_dim, hidden_dim),
+                                               nn.ReLU(),
+                                               nn.Linear(hidden_dim, 22))
+        self.reg = nn.Sequential(nn.Linear(embed_dim, hidden_dim),
+                                               nn.ReLU(),
+                                               nn.Dropout(dropout),
+                                               nn.Linear(hidden_dim, 1))
+        base_args = {"embed_dim":embed_dim}
+        if pooling_kwargs is None:
+            pooling_kwargs = base_args
+        else:
+            pooling_kwargs = {**pooling_kwargs, **base_args}
+        if pooling == "mean":
+            aggr = MeanAggr
+        elif pooling == "max":
+            aggr = MaxAggr
+        elif pooling == "attn":
+            aggr = AttnAggr
+        elif pooling == "deepset":
+            aggr = DeepsetAggr
+        elif pooling == "deeperset":
+            aggr = DeepersetAggr
+        elif pooling == "multihead":
+            aggr = MultiHeadAttnPooling
+        elif pooling == "transformer":
+            aggr = MultiHeadAttnFFPooling
+        self.pooling= aggr(**pooling_kwargs)
+    def load_from_pretrained(self, path):
+        weights = torch.load(path)
+        self.pooling.load_state_dict(weights["pooling"])
+        self.pooling.reset_xpar()
+        self.molecular_decoder.load_state_dict(weights["MLP"])
+        self.atom_embedder.load_state_dict(weights["gnn"])
+    def forward(self, data):
+        node_embeddings = self.atom_embedder(data)
+        out = self.pooling(node_embeddings.squeeze(), data["cell"].squeeze(), batch=data["batch"]).squeeze()
+        return self.reg(out).squeeze()
+    def transfer_mlp(self):
+        self.reg[0].load_state_dict(self.molecular_decoder[0].state_dict())
+    def freeze_gnn(self):
+        for param in self.atom_embedder.parameters():
+            param.requires_grad = False
+    def partial_unfreeze(self):
+        for param in self.atom_embedder.get_last_layer().parameters():
+            param.requires_grad = True

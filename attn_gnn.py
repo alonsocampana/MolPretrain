@@ -40,6 +40,10 @@ class Model2D(nn.Module):
                                     p_dropout=dropout)
     def forward(self, data):
         return self.gnn_net(data)
+    def get_last_layer(self):
+        all_blocks = self.gnn_net.blocks
+        return all_blocks[len(all_blocks)-1]
+        
     
 class Model3D(nn.Module):
     def __init__(self,

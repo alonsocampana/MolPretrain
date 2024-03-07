@@ -31,6 +31,9 @@ class Model2D(nn.Module):
         self.gnn_net = TrimNet(in_dim = init_dim, hidden_dim = embed_dim, outdim = 1, depth = num_layers, heads=num_heads, edge_in_dim = edge_dim)
     def forward(self, data):
         return self.gnn_net(data, embeddings="nodes")
+    def get_last_layer(self):
+        cnv = self.gnn_net.convs
+        return cnv[len(cnv) - 1]
     
 class Model3D(nn.Module):
     def __init__(self,
